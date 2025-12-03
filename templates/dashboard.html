@@ -1,0 +1,32 @@
+{% extends "layout.html" %}
+
+{% block content %}
+<header class="hero" style="padding: 3rem; text-align: left; display: flex; flex-direction: column; align-items: flex-start; gap: 10px;">
+    <h1 style="font-size: 2.5rem;">Hello, {{ username }}!</h1>
+    <p>Welcome to your personal Telia Account Dashboard. This is the heart of your services.</p>
+    <div style="background: rgba(255,255,255,0.2); padding: 1rem 2rem; border-radius: 10px; margin-top: 1rem; width: 100%;">
+        <h3>Current Balance</h3>
+        <h2 style="font-size: 2rem;">$45.00</h2>
+        <small>Due Date: Dec 15, 2025</small>
+        <a href="#" style="background: var(--accent-color); color: var(--primary-color); padding: 5px 15px; border-radius: 50px; text-decoration: none; font-weight: bold; margin-left: 20px;">Pay Now</a>
+    </div>
+</header>
+
+<section class="services-grid">
+    <div class="service-card">
+        <div class="icon-box"><i class="fas fa-file-invoice-dollar"></i></div>
+        <h3>View Bills</h3>
+        <p>Download your latest invoice or view payment history.</p>
+    </div>
+    <div class="service-card">
+        <div class="icon-box"><i class="fas fa-chart-line"></i></div>
+        <h3>Data Usage</h3>
+        <p>You have used <strong>12GB</strong> of your 50GB plan this month.</p>
+    </div>
+    <div class="service-card">
+        <div class="icon-box"><i class="fas fa-headset"></i></div>
+        <h3>Technical Support</h3>
+        <p>Report an outage or start a technical chat.</p>
+    </div>
+</section>
+{% endblock %}

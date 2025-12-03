@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Telia Account | Next-Gen Telecom</title>
+    <!-- Jinja now correctly resolves the path to style.css -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <!-- Font Awesome for Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+</head>
+<body>
+
+    <!-- Navigation -->
+    <nav class="navbar">
+        <div class="logo">Telia<span>Account</span></div>
+        <div class="nav-links">
+            <a href="{{ url_for('index') }}">Home</a>
+            <!-- Note: These links are now simple and rely on Flask's security to redirect guests -->
+            {% if session.get('user_id') %}
+                <a href="{{ url_for('services') }}">Services</a>
+                <a href="{{ url_for('dashboard') }}">Account</a>
+                <a href="{{ url_for('logout') }}" class="btn-primary">Logout ({{ session.username }})</a>
+            {% else %}
+                <a href="{{ url_for('login') }}" class="btn-primary">Login / Register</a>
+            {% endif %}
+        </div>
+    </nav>
+
+    <!-- Flash Messages -->
+    <div class="flash-messages">
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                {% for category, message in messages %}
+                    <div class="alert {{ category }}">{{ message }}</div>
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
+    </div>
+
+    <!-- Content Block -->
+    <main class="content-wrapper">
+        {% block content %}{% endblock %}
+    </main>
+
+    <!-- Chatbot Widget (Always visible for all users) -->
+    <div class="chat-widget">
+        <div class="chat-window" id="chatWindow">
+            <div class="chat-header">
+                <i class="fas fa-robot"></i>
+                <div>
+                    <h4>Telia Assistant</h4>
+                    <small id="chat-status">Guest Mode</small>
+                </div>
+            </div>
+            <div class="chat-body" id="chatBody">
+                <!-- Initial message -->
+                <div class="message bot-msg" id="initialBotMessage">
+                    {% if session.get('user_id') %}
+                        <!-- Logged-in initial message -->
+                        Welcome back, {{ session.username }}! I'm your dedicated Telia Assistant. How can I help you with your account today?
+                    {% else %}
+                        <!-- Guest initial message with buttons for better UX -->
+                        I'm your dedicated Telia Assistant. To provide personalized support and access your account, could you please login or signup?
+                        <div class="chat-actions">
+                            <a href="{{ url_for('login') }}" class="chat-btn chat-login-btn">Login</a>
+                            <a href="{{ url_for('register') }}" class="chat-btn chat-register-btn">Register</a>
+                        </div>
+                    {% endif %}
+                </div>
+            </div>
+            <div class="chat-input">
+                <input type="text" id="userInput" placeholder="Type your query..." onkeyup="if(event.key === 'Enter') sendMessage()">
+                <button onclick="sendMessage()"><i class="fas fa-paper-plane"></i></button>
+            </div>
+        </div>
+        
+        <!-- Chatbot toggle button -->
+        <div class="chat-toggle" id="chatToggle" onclick="toggleChat()">
+            <i class="fas fa-comment-dots"></i>
+            <span class="chat-notification" id="chatNotification"></span>
+        </div>
+    </div>
+
+    <!-- Jinja now correctly resolves the path to script.js -->
+    <script src="{{ url_for('static', filename='js/script.js') }}"></script>
+
+    <!-- Embed session data in data attributes to avoid JS parsing issues in editors -->
+    <div id="session-data" style="display:none"
+         data-username="{{ session.get('username', '') }}"
+         data-logged-in="{{ '1' if session.get('user_id') else '0' }}"></div>
+
+    <script>
+        // Read session data from DOM attributes to avoid inline Jinja expressions in JS
+        const sessionDataEl = document.getElementById('session-data');
+        const currentUser = sessionDataEl ? sessionDataEl.dataset.username : '';
+        const isLoggedIn = sessionDataEl ? sessionDataEl.dataset.loggedIn === '1' : false;
+
+        // Initialize the chatbot state on load
+        window.onload = function() {
+            initChatbot();
+        };
+    </script>
+</body>
+</html>

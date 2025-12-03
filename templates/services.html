@@ -1,0 +1,33 @@
+{% extends "layout.html" %}
+
+{% block content %}
+<header class="hero" style="background: linear-gradient(135deg, #0077c2 0%, #0099ff 100%);">
+    <h1>Your Active Services</h1>
+    <p>Manage your mobile, broadband, and TV subscriptions easily.</p>
+</header>
+
+<section class="services-grid">
+    <div class="service-card" style="border: 2px solid #0099ff;">
+        <div class="icon-box"><i class="fas fa-mobile-alt"></i></div>
+        <h3>5G Unlimited Plan</h3>
+        <p>Status: <strong style="color: green;">Active</strong></p>
+        <p>Data Remaining: Unlimited</p>
+    </div>
+    <div class="service-card" style="border: 2px solid #0099ff;">
+        <div class="icon-box"><i class="fas fa-wifi"></i></div>
+        <h3>Fiber Pro (500 Mbps)</h3>
+        <p>Status: <strong style="color: green;">Active</strong></p>
+        <p>Next Upgrade: 1 Gbps available</p>
+    </div>
+    <div class="service-card" style="border: 2px solid #0099ff;">
+        <div class="icon-box"><i class="fas fa-tv"></i></div>
+        <h3>Premium TV Package</h3>
+        <p>Status: <strong style="color: green;">Active</strong></p>
+        <p>Channels: 150+ HD</p>
+    </div>
+</section>
+
+<div style="text-align: center; padding: 2rem;">
+    <a href="#" class="btn-primary">Explore Add-ons and Upgrades</a>
+</div>
+{% endblock %}
