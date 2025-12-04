@@ -1,28 +1,27 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Telia Account | Next-Gen Telecom</title>
-    <!-- Jinja now correctly resolves the path to style.css -->
+    <title>Tata Teleservices</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
-    <!-- Font Awesome for Icons -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
 </head>
+
 <body>
 
     <!-- Navigation -->
     <nav class="navbar">
-        <div class="logo">Telia<span>Account</span></div>
+        <div class="logo">Tata Teleservices<span> | Next-Gen Telecom</span></div>
         <div class="nav-links">
             <a href="{{ url_for('index') }}">Home</a>
-            <!-- Note: These links are now simple and rely on Flask's security to redirect guests -->
+            <a href="{{ url_for('services') }}">Services</a>
+            <a href="#">Support</a>
             {% if session.get('user_id') %}
-                <a href="{{ url_for('services') }}">Services</a>
-                <a href="{{ url_for('dashboard') }}">Account</a>
-                <a href="{{ url_for('logout') }}" class="btn-primary">Logout ({{ session.username }})</a>
+            <a href="{{ url_for('logout') }}" class="btn-primary">Logout</a>
             {% else %}
-                <a href="{{ url_for('login') }}" class="btn-primary">Login / Register</a>
+            <a href="{{ url_for('login') }}" class="btn-primary">Login / Register</a>
             {% endif %}
         </div>
     </nav>
@@ -30,76 +29,85 @@
     <!-- Flash Messages -->
     <div class="flash-messages">
         {% with messages = get_flashed_messages(with_categories=true) %}
-            {% if messages %}
-                {% for category, message in messages %}
-                    <div class="alert {{ category }}">{{ message }}</div>
-                {% endfor %}
-            {% endif %}
+        {% if messages %}
+        {% for category, message in messages %}
+        <div class="alert {{ category }}">{{ message }}</div>
+        {% endfor %}
+        {% endif %}
         {% endwith %}
     </div>
 
     <!-- Content Block -->
-    <main class="content-wrapper">
-        {% block content %}{% endblock %}
-    </main>
+    {% block content %}{% endblock %}
 
-    <!-- Chatbot Widget (Always visible for all users) -->
+    <!-- Chatbot Widget (Always visible, behavior managed by JS based on login status) -->
     <div class="chat-widget">
+
+        <!-- Pop-up Message (Always visible) -->
+        <div class="chat-notification-popup" id="chatPopup">
+            Hey there {{ session.get('username', 'Guest') }}, I'm here to assist you with any doubts you might have.
+        </div>
+
         <div class="chat-window" id="chatWindow">
             <div class="chat-header">
-                <i class="fas fa-robot"></i>
-                <div>
-                    <h4>Telia Assistant</h4>
-                    <small id="chat-status">Guest Mode</small>
+                <div style="display: flex; align-items: center; gap: 10px;">
+                    <i class="fas fa-robot"></i>
+                    <div>
+                        <h4>Tata Teleservices Assistant</h4>
+                        <!-- Display username only if logged in -->
+                        <small>Online | <span id="username-display">
+                                {% if session.get('user_id') %}
+                                {{ session.username }}
+                                {% else %}
+                                Guest
+                                {% endif %}
+                            </span></small>
+                    </div>
+                </div>
+                <!-- Feature 1: Maximize/Minimize Controls -->
+                <div class="header-controls">
+                    <!-- Icon will change in JS, fa-expand is the default/minimized state -->
+                    <i class="fas fa-expand-arrows-alt" id="maximizeBtn" onclick="toggleMaximize(event)"
+                        title="Maximize"></i>
+                    <i class="fas fa-times" onclick="toggleChat()" title="Close"></i>
                 </div>
             </div>
+
             <div class="chat-body" id="chatBody">
-                <!-- Initial message -->
-                <div class="message bot-msg" id="initialBotMessage">
-                    {% if session.get('user_id') %}
-                        <!-- Logged-in initial message -->
-                        Welcome back, {{ session.username }}! I'm your dedicated Telia Assistant. How can I help you with your account today?
-                    {% else %}
-                        <!-- Guest initial message with buttons for better UX -->
-                        I'm your dedicated Telia Assistant. To provide personalized support and access your account, could you please login or signup?
-                        <div class="chat-actions">
-                            <a href="{{ url_for('login') }}" class="chat-btn chat-login-btn">Login</a>
-                            <a href="{{ url_for('register') }}" class="chat-btn chat-register-btn">Register</a>
-                        </div>
-                    {% endif %}
+                <!-- FAQs will be shown here for logged-in users only -->
+                <div class="faq-container" id="faqContainer">
+                    <p class="faq-label">Frequent Questions:</p>
+                    <button class="faq-btn"
+                        onclick="sendFAQ('Check Balance', 'Your current balance is $45.00. Due date: Dec 15, 2025.')">Check
+                        Balance</button>
+                    <button class="faq-btn"
+                        onclick="sendFAQ('Internet Issues', 'Please try restarting your router. If the issue persists, click \'Technical Support\' in your dashboard.')">Internet
+                        Issues</button>
+                    <button class="faq-btn"
+                        onclick="sendFAQ('Upgrade Plan', 'You are currently on the 50GB plan. You can upgrade to Unlimited for just $10/mo more.')">Upgrade
+                        Plan</button>
                 </div>
             </div>
+
             <div class="chat-input">
-                <input type="text" id="userInput" placeholder="Type your query..." onkeyup="if(event.key === 'Enter') sendMessage()">
+                <input type="text" id="userInput" placeholder="Type a message...">
                 <button onclick="sendMessage()"><i class="fas fa-paper-plane"></i></button>
             </div>
         </div>
-        
-        <!-- Chatbot toggle button -->
-        <div class="chat-toggle" id="chatToggle" onclick="toggleChat()">
+
+        <!-- Toggle Button with Notification Dot -->
+        <div class="chat-toggle" onclick="toggleChat()">
             <i class="fas fa-comment-dots"></i>
-            <span class="chat-notification" id="chatNotification"></span>
+            <span class="notification-badge">1</span>
         </div>
     </div>
 
-    <!-- Jinja now correctly resolves the path to script.js -->
     <script src="{{ url_for('static', filename='js/script.js') }}"></script>
-
-    <!-- Embed session data in data attributes to avoid JS parsing issues in editors -->
-    <div id="session-data" style="display:none"
-         data-username="{{ session.get('username', '') }}"
-         data-logged-in="{{ '1' if session.get('user_id') else '0' }}"></div>
-
     <script>
-        // Read session data from DOM attributes to avoid inline Jinja expressions in JS
-        const sessionDataEl = document.getElementById('session-data');
-        const currentUser = sessionDataEl ? sessionDataEl.dataset.username : '';
-        const isLoggedIn = sessionDataEl ? sessionDataEl.dataset.loggedIn === '1' : false;
-
-        // Initialize the chatbot state on load
-        window.onload = function() {
-            initChatbot();
-        };
+        // Pass session username and login status to JS safely
+        const isLoggedIn = {{ 'true' if session.get('user_id') else 'false' }};
+        const currentUser = "{{ session.get('username', 'Guest') }}";
     </script>
 </body>
+
 </html>
