@@ -1,80 +1,99 @@
-// Global state variables passed from Flask
-// const currentUser; // Defined in layout.html
-// const isLoggedIn; // Defined in layout.html
-
+// Chatbot Logic
 let isChatOpen = false;
-let hasProactivelyGreeted = false; // Tracks if the proactive login message was shown
+let isMaximized = false;
+let hasGreeted = false;
 
-// --- Helper Functions ---
+// Static messages for non-logged-in users
+const LOGIN_PROMPT = `I am happy to assist you, but for security and account-specific queries, you need to be logged in. 
+Please <a href="/login" style="color: var(--accent-color); font-weight: bold;">Login</a> or <a href="/register" style="color: var(--accent-color); font-weight: bold;">Register</a> to continue the conversation!`;
 
+// --- UI Toggles ---
+
+// Toggle Chat Window & Notification Popup
 function toggleChat() {
     const chatWindow = document.getElementById('chatWindow');
-    const chatNotification = document.getElementById('chatNotification');
+    const chatPopup = document.getElementById('chatPopup');
+
     isChatOpen = !isChatOpen;
-    
+
     if (isChatOpen) {
         chatWindow.classList.add('active');
-        // Clear any notifications when opening
-        chatNotification.classList.remove('active');
-        // Ensure status is correctly set
-        document.getElementById('chat-status').innerText = isLoggedIn ? `Logged in as ${currentUser}` : 'Guest Mode';
+        // Hide the notification popup when chat is opened
+        if (chatPopup) chatPopup.style.display = 'none';
 
+        // Initial welcome/login prompt
+        if (!hasGreeted) {
+            setTimeout(() => {
+                if (isLoggedIn) {
+                    addBotMessage(`Hi ${currentUser}, how can I help you today?`);
+                } else {
+                    // Initial prompt for Guest users
+                    addBotMessage(`Welcome to Tata Teleservices Support! Please <a href="/login" style="color: var(--accent-color); font-weight: bold;">Login</a> or <a href="/register" style="color: var(--accent-color); font-weight: bold;">Register</a> to access account-specific help.`);
+                }
+                hasGreeted = true;
+            }, 500);
+        }
     } else {
         chatWindow.classList.remove('active');
     }
 }
 
-/**
- * Adds a standard bot message (text only) to the chat body.
- * @param {string} text - The message text.
- */
+// Feature 1: Maximize/Minimize Logic (Full Device)
+function toggleMaximize(event) {
+    if (event) event.stopPropagation();
+
+    const chatWindow = document.getElementById('chatWindow');
+    const maximizeBtn = document.getElementById('maximizeBtn');
+    const toggleBtn = document.querySelector('.chat-toggle');
+
+    isMaximized = !isMaximized;
+
+    if (isMaximized) {
+        chatWindow.classList.add('maximized');
+        maximizeBtn.classList.remove('fa-expand-arrows-alt');
+        maximizeBtn.classList.add('fa-compress-arrows-alt'); // Change icon to compress
+        maximizeBtn.title = "Minimize";
+        // Hide the toggle button when maximized for full-screen effect
+        if (toggleBtn) toggleBtn.style.display = 'none';
+    } else {
+        chatWindow.classList.remove('maximized');
+        maximizeBtn.classList.remove('fa-compress-arrows-alt');
+        maximizeBtn.classList.add('fa-expand-arrows-alt'); // Change icon back
+        maximizeBtn.title = "Maximize";
+        // Show the toggle button again
+        if (toggleBtn) toggleBtn.style.display = 'flex';
+    }
+}
+
+// --- Message Handling ---
+
+// Feature 2: Send FAQ Function
+function sendFAQ(question, staticAnswer) {
+    // Check login status first
+    if (!isLoggedIn) {
+        addUserMessage(question);
+        addBotMessage(LOGIN_PROMPT);
+        return;
+    }
+
+    // 1. Display the User's click as a message
+    addUserMessage(question);
+
+    // 2. Display the Static Answer after short delay
+    setTimeout(() => {
+        addBotMessage(staticAnswer);
+    }, 600);
+}
+
 function addBotMessage(text) {
     const chatBody = document.getElementById('chatBody');
     const msgDiv = document.createElement('div');
     msgDiv.className = 'message bot-msg';
-    msgDiv.innerText = text;
+    // Use innerHTML to allow for the login/register links
+    msgDiv.innerHTML = text;
     chatBody.appendChild(msgDiv);
     chatBody.scrollTop = chatBody.scrollHeight;
 }
-
-/**
- * Adds a bot message containing text and the Login/Register buttons.
- * @param {string} text - The message text.
- */
-function addLoginRequiredMessage(text) {
-    const chatBody = document.getElementById('chatBody');
-    const msgDiv = document.createElement('div');
-    msgDiv.className = 'message bot-msg';
-    
-    // Create text node
-    const textNode = document.createTextNode(text);
-    msgDiv.appendChild(textNode);
-    
-    // Create button container (chat-actions)
-    const actionsDiv = document.createElement('div');
-    actionsDiv.className = 'chat-actions';
-    
-    // Create Login button
-    const loginBtn = document.createElement('a');
-    loginBtn.href = '/login';
-    loginBtn.className = 'chat-btn chat-login-btn';
-    loginBtn.innerText = 'Login';
-    
-    // Create Register button
-    const registerBtn = document.createElement('a');
-    registerBtn.href = '/register';
-    registerBtn.className = 'chat-btn chat-register-btn';
-    registerBtn.innerText = 'Register';
-
-    actionsDiv.appendChild(loginBtn);
-    actionsDiv.appendChild(registerBtn);
-    
-    msgDiv.appendChild(actionsDiv);
-
-    chatBody.appendChild(msgDiv);
-    chatBody.scrollTop = chatBody.scrollHeight;
-}
-
 
 function addUserMessage(text) {
     const chatBody = document.getElementById('chatBody');
@@ -88,64 +107,39 @@ function addUserMessage(text) {
 function sendMessage() {
     const input = document.getElementById('userInput');
     const text = input.value.trim();
-    
+
     if (text) {
         addUserMessage(text);
         input.value = '';
-        
-        // --- Gatekeeping Logic: Check Login Status ---
+
+        // Non-logged-in user gate
         if (!isLoggedIn) {
-            // If the user is a guest, display the login message with buttons and stop.
-            setTimeout(() => {
-                addLoginRequiredMessage(
-                    "I'm your dedicated Telia Assistant. To provide personalized support and access your account, please login or signup to continue our chat."
-                );
-            }, 500);
-            return; // STOP execution for guests
+            addBotMessage(LOGIN_PROMPT);
+            return;
         }
-        // --- End Gatekeeping Logic ---
-        
-        // Logic for LOGGED-IN users (future API calls)
-        
-        // Show typing indicator or simple processing
+
+        // Logged-in user: Placeholder for API call
         setTimeout(() => {
-            // Placeholder response - in future connect to API
-            addBotMessage("I've received your account-related query. Our smart systems will process this soon!");
+            addBotMessage("I've received your query. Our advanced AI is analyzing it...");
         }, 1000);
-        
-        // Example of calling the backend API (commented out until fully implemented)
-        /*
-        fetch('/api/chat', {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({message: text})
-        })
-        .then(r => r.json())
-        .then(data => addBotMessage(data.response));
-        */
     }
 }
 
-/**
- * Initializes the chat status display on page load.
- */
-function initChatbot() {
-    document.getElementById('chat-status').innerText = isLoggedIn ? `Logged in as ${currentUser}` : 'Guest Mode';
-    
-    // Ensure the proactive guest message (with buttons) or logged-in greeting 
-    // is rendered by Flask in layout.html, so no need for JS to add the initial message.
-    // However, if the user is logged in, we must ensure the initial message disappears
-    // upon interaction (not needed now, but good practice).
-}
+// Allow Enter key to send
+document.getElementById('userInput')?.addEventListener('keypress', function (e) {
+    if (e.key === 'Enter') {
+        sendMessage();
+    }
+});
 
-// Allow Enter key to send message when input is focused
+// --- Initialization ---
 document.addEventListener('DOMContentLoaded', () => {
-    const input = document.getElementById('userInput');
-    if (input) {
-        input.addEventListener('keyup', (event) => {
-            if (event.key === 'Enter') {
-                sendMessage();
-            }
-        });
+    const faqContainer = document.getElementById('faqContainer');
+
+    // Hide FAQs for non-logged-in users and display a prompt instead
+    if (!isLoggedIn) {
+        if (faqContainer) {
+            faqContainer.innerHTML = `<p class="faq-label">Please Login to view account-specific quick actions.</p>`;
+        }
     }
 });

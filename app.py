@@ -5,8 +5,8 @@ from functools import wraps
 from werkzeug.security import generate_password_hash, check_password_hash
 
 app = Flask(__name__)
-app.secret_key = 'telia_secure_key_dev'  # Change this for production
-DB_NAME = "users.db"
+app.secret_key = 'secure_key_dev'  # Change this for production
+DB_NAME = "./Database/NextGen.db"
 
 # --- Database Helper Functions ---
 def init_db():
@@ -133,4 +133,5 @@ def chat_api():
     })
 
 if __name__ == '__main__':
-    app.run(debug=True)
+    # init_db()
+    app.run(port=5873, debug=True)
