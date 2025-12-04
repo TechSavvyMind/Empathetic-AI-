@@ -1,15 +1,15 @@
 import sqlite3
 import operator
 import os
+import json
 import shutil
 from typing import Annotated, TypedDict, Union, List, Literal
 from dotenv import load_dotenv
-from langchain_openai import ChatOpenAI, OpenAIEmbeddings
 from langchain_google_genai import ChatGoogleGenerativeAI, GoogleGenerativeAIEmbeddings
+from langchain_openai import ChatOpenAI, OpenAIEmbeddings
 from langchain_community.utilities import SQLDatabase
 from langchain_chroma import Chroma
-from langchain_community.document_loaders import TextLoader
-from langchain_text_splitters import CharacterTextSplitter
+from langchain_core.documents import Document
 from langchain_core.messages import BaseMessage, HumanMessage, AIMessage
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser
@@ -23,115 +23,139 @@ load_dotenv()
 GOOGLE_API_KEY = os.getenv('GOOGLE_API_KEY')
 
 # =============================================================================
-# 1. SETUP: Database & SOP Loading (Based on Uploaded PDFs)
+# 1. CONFIGURATION
 # =============================================================================
 
 DB_PATH = "./Database/NextGen.db"
 CHROMA_DB_DIR = "./sop_embeddings/chroma_store"
+COLLECTION_NAME = "telecom_sops"
+JSONL_PATH = "./sop_embeddings/telecom_sop_chunks.jsonl"  # Updated to your specific filename
 
+
+# =============================================================================
+# 2. DATA LOADING & DATABASE SETUP
+# =============================================================================
 
 def setup_database_schema():
     """Creates the exact schema defined in 'logical_model.pdf'."""
-    if not os.path.exists(DB_PATH):
-        conn = sqlite3.connect(DB_PATH)
-        c = conn.cursor()
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
 
-        # 1. CUSTOMERS
-        c.execute('''CREATE TABLE IF NOT EXISTS customers (
-            customer_id TEXT PRIMARY KEY, name TEXT, phone_number TEXT, 
-            account_status TEXT, kyc_status TEXT, pincode TEXT)''')
+    # 1. CUSTOMERS
+    c.execute('''CREATE TABLE IF NOT EXISTS customers (
+        customer_id TEXT PRIMARY KEY, name TEXT, phone_number TEXT, 
+        account_status TEXT, kyc_status TEXT, pincode TEXT)''')
 
-        # 2. OUTAGE_AREAS (For Slow Internet SOP)
-        c.execute('''CREATE TABLE IF NOT EXISTS outage_areas (
-            outage_id TEXT PRIMARY KEY, city TEXT, pincode TEXT, 
-            issue_description TEXT, expected_resolution TEXT)''')
+    # 2. OUTAGE_AREAS
+    c.execute('''CREATE TABLE IF NOT EXISTS outage_areas (
+        outage_id TEXT PRIMARY KEY, city TEXT, pincode TEXT, 
+        issue_description TEXT, expected_resolution TEXT)''')
 
-        # 3. CUSTOMER_USAGE (For Usage Checks)
-        c.execute('''CREATE TABLE IF NOT EXISTS customer_usage (
-            usage_id TEXT PRIMARY KEY, customer_id TEXT, date TEXT, 
-            mobile_data_used_gb REAL, plan_limit_gb REAL)''')
+    # 3. CUSTOMER_USAGE
+    c.execute('''CREATE TABLE IF NOT EXISTS customer_usage (
+        usage_id TEXT PRIMARY KEY, customer_id TEXT, date TEXT, 
+        mobile_data_used_gb REAL, plan_limit_gb REAL)''')
 
-        # 4. INVOICES (For Billing Dispute SOP)
-        c.execute('''CREATE TABLE IF NOT EXISTS invoices (
-            invoice_id TEXT PRIMARY KEY, customer_id TEXT, amount REAL, 
-            due_date TEXT, paid_status TEXT, billing_period TEXT)''')
+    # 4. INVOICES
+    c.execute('''CREATE TABLE IF NOT EXISTS invoices (
+        invoice_id TEXT PRIMARY KEY, customer_id TEXT, amount REAL, 
+        due_date TEXT, paid_status TEXT, billing_period TEXT)''')
 
-        # 5. TRANSACTIONS (For Wrong Recharge SOP)
-        c.execute('''CREATE TABLE IF NOT EXISTS transactions (
-            txn_id TEXT PRIMARY KEY, customer_id TEXT, amount REAL, 
-            txn_date TEXT, transaction_status TEXT)''')
+    # 5. TRANSACTIONS
+    c.execute('''CREATE TABLE IF NOT EXISTS transactions (
+        txn_id TEXT PRIMARY KEY, customer_id TEXT, amount REAL, 
+        txn_date TEXT, transaction_status TEXT)''')
 
-        # 6. SUBSCRIPTIONS (For Roaming/Plan Benefits SOP)
-        c.execute('''CREATE TABLE IF NOT EXISTS subscriptions (
-            subscription_id TEXT PRIMARY KEY, customer_id TEXT, plan_id TEXT, 
-            status TEXT, start_date TEXT)''')
+    # 6. SUBSCRIPTIONS
+    c.execute('''CREATE TABLE IF NOT EXISTS subscriptions (
+        subscription_id TEXT PRIMARY KEY, customer_id TEXT, plan_id TEXT, 
+        status TEXT, start_date TEXT)''')
 
-        # --- Insert Mock Data for Testing ---
-        # Case 1: CUST_001 (Slow Internet, Outage)
-        c.execute(
-            "INSERT OR REPLACE INTO customers VALUES ('CUST_001', 'Alice', '555-0101', 'Active', 'Verified', '10001')")
-        c.execute("INSERT OR REPLACE INTO outage_areas VALUES ('OUT_01', 'New York', '10001', 'Fiber Cut', '4 Hours')")
+    # --- Insert Mock Data for Testing ---
+    c.execute(
+        "INSERT OR REPLACE INTO customers VALUES ('CUST_001', 'Alice', '555-0101', 'Active', 'Verified', '10001')")
+    c.execute("INSERT OR REPLACE INTO outage_areas VALUES ('OUT_01', 'New York', '10001', 'Fiber Cut', '4 Hours')")
+    c.execute("INSERT OR REPLACE INTO customers VALUES ('CUST_002', 'Bob', '555-0102', 'Active', 'Verified', '10002')")
+    c.execute(
+        "INSERT OR REPLACE INTO invoices VALUES ('INV_001', 'CUST_002', 150.00, '2023-11-01', 'Unpaid', 'Oct-2023')")
 
-        # Case 2: CUST_002 (Billing Dispute)
-        c.execute("INSERT OR REPLACE INTO customers VALUES ('CUST_002', 'Bob', '555-0102', 'Active', 'Verified', '10002')")
-        c.execute(
-            "INSERT OR REPLACE INTO invoices VALUES ('INV_001', 'CUST_002', 150.00, '2023-11-01', 'Unpaid', 'Oct-2023')")
-
-        conn.commit()
-        conn.close()
-
-    db_connection = SQLDatabase.from_uri(f"sqlite:///{DB_PATH}")
+    conn.commit()
+    conn.close()
     print("✅ Database Schema & Mock Data Ready.")
 
-    return db_connection
+
+def load_documents_from_jsonl(file_path: str) -> List[Document]:
+    """
+    Simplified loader for your specific JSONL structure.
+    Reads: {'chunk_id':..., 'sop_id':..., 'text':..., 'tags':...}
+    """
+    documents = []
+    try:
+        with open(file_path, 'r', encoding='utf-8') as f:
+            for line in f:
+                line = line.strip()
+                if not line: continue
+
+                data = json.loads(line)
+
+                # Extract main content
+                text_content = data.get("text")
+                if not text_content: continue
+
+                # Extract metadata (Flatten list tags to string for compatibility)
+                tags = data.get("tags", [])
+                if isinstance(tags, list):
+                    tags = ", ".join(tags)
+
+                meta = {
+                    "chunk_id": data.get("chunk_id"),
+                    "sop_id": data.get("sop_id"),
+                    "tags": tags
+                }
+
+                documents.append(Document(page_content=text_content, metadata=meta))
+
+        print(f"📄 Parsed {len(documents)} documents from {file_path}")
+        return documents
+
+    except FileNotFoundError:
+        print(f"❌ File not found: {file_path}")
+        return []
+    except Exception as e:
+        print(f"❌ Error loading JSONL: {e}")
+        return []
 
 
 def setup_vector_store():
-    """Loads the SOP content from your PDFs into the Vector Store."""
+    """Initializes ChromaDB, loading data from JSONL only if DB doesn't exist."""
     embedding_function = GoogleGenerativeAIEmbeddings(model="models/gemini-embedding-001", api_key=GOOGLE_API_KEY)
 
-    # Check persistence
+    # 1. Check if Vector Store exists on disk
     if os.path.exists(CHROMA_DB_DIR) and os.path.isdir(CHROMA_DB_DIR):
-        print("✅ Found existing Vector Store.")
-        return Chroma(persist_directory=CHROMA_DB_DIR, embedding_function=embedding_function).as_retriever()
+        print("✅ Found existing ChromaDB. Loading...")
+        return Chroma(persist_directory=CHROMA_DB_DIR, collection_name=COLLECTION_NAME,
+                      embedding_function=embedding_function).as_retriever()
 
-    print("⚙️ Building Vector Store from SOP Content...")
+    # 2. Build from JSONL if missing
+    print(f"⚙️ Building new ChromaDB from {JSONL_PATH}...")
 
-    # Content extracted from your uploaded PDFs
-    sop_content = [
-        # SLOW INTERNET SOP
-        """SOP: Handling Slow Internet Issue.
-        Step 1: Acknowledge Complaint.
-        Step 2: Verify Account Status. Check CUSTOMERS table for account_status='Active'.
-        Step 3: Check for Network Outage. Query OUTAGE_AREAS using customer's pincode. SQL: SELECT * FROM outage_areas WHERE pincode = '...';
-        If outage exists, inform resolution time.
-        Step 4: Validate Usage. Check CUSTOMER_USAGE. If data_used > plan_limit, suggest upgrade.""",
+    docs = load_documents_from_jsonl(JSONL_PATH)
 
-        # ROUTER CONFIG SOP
-        """SOP: Handling Router Configuration.
-        Step 1: Verify Account Status in CUSTOMERS table.
-        Step 2: Validate Router Settings.
-        Step 3: Restart Router.
-        Step 4: If unresolved, escalate to Technical Team.""",
+    if docs:
+        vectorstore = Chroma.from_documents(docs, embedding_function, persist_directory=CHROMA_DB_DIR,
+                                            collection_name=COLLECTION_NAME)
 
-        # BILLING DISPUTE SOP (Master SOP)
-        """SOP: Billing Dispute.
-        Purpose: Resolve incorrect billing amounts.
-        Step 1: Verify account and invoice. Check INVOICES table. SQL: SELECT * FROM invoices WHERE customer_id='...';
-        Step 2: Validate billing period and amount.
-        Step 3: Escalate to Billing Team if mismatch found.""",
-
-        # GENERAL INFO (For General Inquiries)
-        """Customer Service Hours: 8 AM to 8 PM EST, Monday through Friday.
-        To request a refund, please visit the 'Support' section in the mobile app."""
-    ]
-
-    vectorstore = Chroma.from_texts(sop_content, embedding=embedding_function, persist_directory=CHROMA_DB_DIR)
-    return vectorstore.as_retriever()
+        print(f"✅ Created and persisted ChromaDB to {CHROMA_DB_DIR}")
+        return vectorstore.as_retriever()
+    else:
+        print("⚠️ No documents loaded. Creating empty store.")
+        return Chroma.from_texts(["No Content"], embedding_function).as_retriever()
 
 
-db = setup_database_schema()
+# Initialize Resources
+# setup_database_schema()
 sop_retriever = setup_vector_store()
+db = SQLDatabase.from_uri(f"sqlite:///{DB_PATH}")
 
 llm = ChatGoogleGenerativeAI(
     model="gemini-2.5-flash",
@@ -140,14 +164,8 @@ llm = ChatGoogleGenerativeAI(
 )
 
 # =============================================================================
-# 2. STATE & DEFINITIONS
+# 3. STATE & DEFINITIONS
 # =============================================================================
-
-# Updated Route Options based on your requirement
-# greeting: Chit-chat
-# general_inquiry: SOP only (How-to, Policies)
-# db_inquiry: DB only (My balance, My bill)
-# troubleshoot: Hybrid (Slow internet, Billing dispute)
 
 ROUTE_OPTIONS = Literal["greeting", "general_inquiry", "db_inquiry", "troubleshoot"]
 SENTIMENT_OPTIONS = Literal["Angry", "Happy", "Sad", "Neutral", "Frustrated"]
@@ -158,7 +176,7 @@ class AgentState(TypedDict):
     sentiment: SENTIMENT_OPTIONS
     route_intent: ROUTE_OPTIONS
     customer_id: str
-    tool_output: str  # Holds data from DB or SOP
+    tool_output: str
 
 
 # --- Pydantic Models ---
@@ -181,11 +199,11 @@ class SqlQuery(BaseModel):
 
 
 # =============================================================================
-# 3. NODE IMPLEMENTATIONS
+# 4. NODE IMPLEMENTATIONS
 # =============================================================================
 
 def sentiment_agent(state: AgentState):
-    """Detects emotion using LLM (No Mocking)."""
+    """Detects emotion using LLM."""
     print("\n--- [Node] Sentiment Agent ---")
     user_text = state["messages"][-1].content
 
@@ -247,6 +265,7 @@ def db_agent(state: AgentState):
     prompt = f"Schema: {db.get_table_info()}. Write SQL for customer_id='{cust_id}' based on: {user_text}"
     result = (ChatPromptTemplate.from_template(prompt) | structured_llm).invoke({})
     print(f"SQL Query: {result.query}")
+
     try:
         data = db.run(result.query)
         output = f"DB Record: {data}"
@@ -327,7 +346,7 @@ def response_synthesizer(state: AgentState):
 
 
 # =============================================================================
-# 4. GRAPH CONSTRUCTION
+# 5. GRAPH CONSTRUCTION
 # =============================================================================
 
 workflow = StateGraph(AgentState)
@@ -367,26 +386,27 @@ workflow.add_edge("synthesizer", END)
 app = workflow.compile()
 
 # =============================================================================
-# 5. TEST SCENARIOS
+# 6. TEST SCENARIOS
 # =============================================================================
 
 if __name__ == "__main__":
     print(">>> 🤖 TELECOM BOT: EMPATHY & CLASSIFICATION ENABLED")
 
-    while True:
-        user_input = input("Enter your query: ")
-        if user_input.lower() == 'exit':
-            break
-        # TEST 1: General Inquiry (SOP only, No DB)
-        print("\n--- TEST 1: General Inquiry (Neutral) ---")
+    # TEST 1: General Inquiry (SOP only, No DB)
+    print("\n--- TEST 1: General Inquiry (Neutral) ---")
+    try:
         res1 = app.invoke(
-            {"messages": [HumanMessage(content=user_input)], "customer_id": "1"})
+            {"messages": [HumanMessage(content="What time does customer support close?")], "customer_id": "CUST_001"})
         print(f"Bot: {res1['messages'][-1].content}")
+    except Exception as e:
+        print(f"Test 1 Failed: {e}")
 
-        # # TEST 2: Billing Dispute (Angry, Hybrid)
-        # # CUST_002 has an 'Unpaid' invoice in the mock data
-        # print("\n--- TEST 2: Billing Dispute (Angry) ---")
-        # res2 = app.invoke(
-        #     {"messages": [HumanMessage(content="I am furious! Why is my bill unpaid when I sent the check??")],
-        #      "customer_id": "CUST_002"})
-        # print(f"Bot: {res2['messages'][-1].content}")
+    # TEST 2: Billing Dispute (Angry, Hybrid)
+    print("\n--- TEST 2: Billing Dispute (Angry) ---")
+    try:
+        res2 = app.invoke(
+            {"messages": [HumanMessage(content="I am furious! Why is my bill unpaid when I sent the check??")],
+             "customer_id": "CUST_002"})
+        print(f"Bot: {res2['messages'][-1].content}")
+    except Exception as e:
+        print(f"Test 2 Failed: {e}")
