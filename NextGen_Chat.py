@@ -26,8 +26,8 @@ GOOGLE_API_KEY = os.getenv('GOOGLE_API_KEY')
 # 1. SETUP: Database & SOP Loading (Based on Uploaded PDFs)
 # =============================================================================
 
-DB_PATH = "C:/Users/2158208/Downloads/NextGen.db"
-CHROMA_DB_DIR = "./nextgen_chroma_db"
+DB_PATH = "./Database/NextGen.db"
+CHROMA_DB_DIR = "./sop_embeddings/chroma_store"
 
 
 def setup_database_schema():
