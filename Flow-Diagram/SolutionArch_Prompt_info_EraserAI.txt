@@ -1,0 +1,57 @@
+title Chatbot Solution Architecture
+
+// Frontend
+UI Chatbot [icon: message-circle, label: "UI (Chatbot)"]
+
+// Processing Layer
+Orchestrator [icon: shuffle]
+
+Fast Path [color: blue, icon: zap] {
+  Fast LLM [icon: cpu, label: "Fast LLM"]
+  Fast SOP DB [icon: database, label: "SOP + DB"]
+  Fast DB [icon: database, label: "DB"]
+  Fast Canonical [icon: book, label: "Canonical"]
+}
+
+Re-Act Path [color: green, icon: search] {
+  ReAct LLM [icon: brain, label: "ReAct LLM"]
+  Ref DB [icon: database, label: "DB"]
+  Other References [icon: file-text]
+}
+
+// Decision Layer
+Response Decision [icon: check-circle]
+Human Agent [icon: user]
+
+// Memory & Cache
+Memory Cache [icon: server, label: "Memory & Cache"]
+
+// Connections
+UI Chatbot > Orchestrator
+
+// Orchestrator to LLMs
+Orchestrator > Fast LLM
+Orchestrator > ReAct LLM
+
+// Fast LLM data sources
+Fast LLM > Fast SOP DB
+Fast LLM > Fast DB
+Fast LLM > Fast Canonical
+
+// Ref LLM data sources
+ReAct LLM > Ref DB
+ReAct LLM > Other References
+
+// LLMs to Response Decision
+Fast LLM > Response Decision
+ReAct LLM > Response Decision
+
+// Response Decision to UI or Human Agent
+Response Decision > Human Agent: low confidence
+
+// Memory & Cache interactions
+Fast LLM > Memory Cache: store response
+ReAct LLM > Memory Cache: store response
+Human Agent > Memory Cache: store/manual response
+UI Chatbot < Response Decision: high confidence
+Orchestrator <> Memory Cache: retrieve/store for future queries
