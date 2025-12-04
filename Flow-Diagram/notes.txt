@@ -1,0 +1,18 @@
+convert below flow into solution architecture diagram with professional look
+
+UI (Chatbot)
+The process starts when the user interacts with the UI chatbot.
+Orchestrator
+The chatbot sends the user’s query to the Orchestrator, which decides how to handle it.
+Two Paths
+Fast LLM: A quick AI model that checks:
+SOP + DB (Standard Operating Procedures and Database)
+DB (Database)
+Canonical (Official reference)
+Goal: Give a fast response.
+Ref LLM: A more detailed AI model that uses DB and other references for accuracy.
+Response Decision
+If the confidence score is greater than 5, the system sends the response back to the user.
+If confidence is low, it goes to a Human Agent for manual help.
+Memory & Cache
+Responses and data are stored in Memory and Cache so future queries can be answered faster.
