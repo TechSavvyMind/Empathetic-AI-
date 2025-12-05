@@ -1,0 +1,54 @@
+CareConnect AI - Stronger connections, kinder conversations
+HUMANIZING DIGITAL CONVERSATIONS - 
+
+Slide 1:
+
+Team member:
+Yogesh 
+Harichandran
+Deepak
+Harshini
+Linu 
+
+Mentor:
+Stalin 
+
+Problem Statement:HUMANIZING DIGITAL CONVERSATIONS
+Current customer service chatbots lack empathy, struggle with unscripted or complex queries, and lose accuracy during long conversations, leading to hallucinations.
+
+Additionally, advanced reasoning models introduce latency, reducing the effectiveness of real-time customer support.
+Industrial Challenges
+
+Industrial challenges
+1. Human-Like Interaction Gaps - Chatbots fail to detect emotional cues or provide empathetic, personalized responses, reduced trust
+2. Limited Handling of Complex Queries -Bots perform well with SOP-based tasks but fail when issues fall outside scripted workflows,Leads to increased escalations to human agents and higher support costs.
+3. Model Constraints & Latency -Context overflow in long conversations causes hallucinated or irrelevant answers,
+High-latency reasoning models slow down real-time assistance, hurting user satisfaction.
+
+
+Scope and dataset and why we consider:
+Domain:Telecom
+Dataset :Mobile and broadband 
+
+architecture diagram -why this arch:
+implementation specific detail - Benefits:
+
+two tier llm model 
+detailed sop can be resolved by fast llm  - sop simple db queries
+Out of context and complex quieres we need proper reasoning - react 
+
+
+bugs, gaps - cache,dataset 
+plan for production - lang graph, plan to have MCP, LangChain
+LangGraph
+Flask - simple light weight FW
+
+
+road map 
+history data caching, 
+
+
+
+
+
+
