@@ -365,7 +365,6 @@ body {
     background: var(--secondary-color);
     transform: translateX(3px);
 }
-
 .message {
     max-width: 80%;
     padding: 0.8rem;
@@ -449,4 +448,111 @@ body {
 
 .alert.success {
     background: #66bb6a;
+}
+
+/* --- Typing Indicator --- */
+.typing-indicator {
+    max-width: 80%;
+    padding: 0.6rem 0.8rem;
+    border-radius: 12px;
+    background: white;
+    align-self: flex-start;
+    border-bottom-left-radius: 2px;
+    border-left: 3px solid var(--primary-color);
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    margin-bottom: 4px;
+}
+
+.typing-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: #bbb;
+    animation: typingBlink 1s infinite ease-in-out;
+}
+
+.typing-dot:nth-child(2) {
+    animation-delay: 0.2s;
+}
+
+.typing-dot:nth-child(3) {
+    animation-delay: 0.4s;
+}
+
+@keyframes typingBlink {
+    0% { opacity: 0.3; transform: translateY(0px); }
+    50% { opacity: 1; transform: translateY(-2px); }
+    100% { opacity: 0.3; transform: translateY(0px); }
+}
+
+
+#plansPanel {
+    display: none; /* default, shown via JS */
+    justify-content: center;
+    gap: 2rem;
+    padding: 2rem 0;
+    position: relative;
+    z-index: 10;
+    background: transparent;
+}
+
+/* Each Plan Block */
+#plansPanel > div {
+    background: var(--secondary-color);
+    border: 1.5px solid var(--primary-color);
+    border-radius: 12px;
+    padding: 1.5rem 1.2rem;
+    min-width: 220px;
+    box-shadow: 0 4px 16px rgba(106, 27, 154, 0.07);
+    transition: transform 0.2s, box-shadow 0.2s;
+}
+
+#plansPanel > div:hover {
+    transform: translateY(-6px) scale(1.03);
+    box-shadow: 0 8px 24px rgba(106, 27, 154, 0.13);
+}
+
+#plansPanel h3 {
+    color: var(--primary-color);
+    margin-bottom: 1rem;
+    font-size: 1.2rem;
+    text-align: center;
+}
+
+#plansPanel ul {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+
+#plansPanel li {
+    padding: 0.5rem 0;
+    font-size: 1rem;
+    color: var(--text-dark);
+    border-bottom: 1px solid #e0e0e0;
+}
+
+#plansPanel li:last-child {
+    border-bottom: none;
+}
+
+/* Close Button for Plans Panel */
+#plansPanel button {
+    position: absolute;
+    top: 1rem;
+    right: 1rem;
+    background: var(--primary-color);
+    color: #fff;
+    border: none;
+    border-radius: 4px;
+    padding: 0.5rem 1.2rem;
+    font-size: 1rem;
+    cursor: pointer;
+    transition: background 0.2s;
+}
+
+#plansPanel button:hover {
+    background: var(--primary-light);
 }

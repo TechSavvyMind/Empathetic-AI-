@@ -28,6 +28,48 @@
 </section>
 
 <div style="text-align: center; padding: 2rem;">
-    <a href="#" class="btn-primary">Explore Add-ons and Upgrades</a>
+    <a href="#" class="btn-primary"onclick="document.getElementById('plansPanel').style.display='flex'; return false;">Explore Add-ons and Upgrades</a>
 </div>
+
+<!-- Plans Panel -->
+<div id="plansPanel" style="display:none; justify-content:center; gap:2rem; padding:2rem 0;">
+    <!-- Data Plans Block -->
+    <div style="background:#f5faff; border:1px solid #0099ff; border-radius:8px; padding:1.5rem; min-width:220px;">
+                <h3 style="color:#0077c2;">Data Plans</h3>
+        <ul style="list-style:none; padding:0;">
+            <li><strong>Basic 10GB</strong> – ₹800/month</li>
+            <li><strong>Standard 50GB</strong> – ₹2,000/month</li>
+            <li><strong>Unlimited</strong> – ₹3,200/month</li>
+        </ul>
+    </div>
+    <!-- Broadband Plans Block -->
+    <div style="background:#f5faff; border:1px solid #0099ff; border-radius:8px; padding:1.5rem; min-width:220px;">
+        <h3 style="color:#0077c2;">Broadband Plans</h3>
+        <ul style="list-style:none; padding:0;">
+            <li><strong>Starter 50 Mbps</strong> – ₹1,200/month</li>
+            <li><strong>Pro 200 Mbps</strong> – ₹2,400/month</li>
+            <li><strong>Ultra 500 Mbps</strong> – ₹3,600/month</li>
+        </ul>
+    </div>
+    <!-- Fiber Plans Block -->
+    <div style="background:#f5faff; border:1px solid #0099ff; border-radius:8px; padding:1.5rem; min-width:220px;">
+        <h3 style="color:#0077c2;">Fiber Plans</h3>
+        <ul style="list-style:none; padding:0;">
+            <li><strong>Fiber 100 Mbps</strong> – ₹1,600/month</li>
+            <li><strong>Fiber 500 Mbps</strong> – ₹2,800/month</li>
+            <li><strong>Fiber 1 Gbps</strong> – ₹4,000/month</li>
+        </ul>
+    </div>
+    <button onclick="document.getElementById('plansPanel').style.display='none';" style="position:absolute; top:2rem; right:2rem; background:#0099ff; color:#fff; border:none; border-radius:4px; padding:0.5rem 1rem;">Close</button>
+</div>
+
+<script>
+    // Optional: Hide panel if clicked outside (basic)
+    document.addEventListener('click', function(event) {
+        var panel = document.getElementById('plansPanel');
+        if (panel.style.display === 'flex' && !panel.contains(event.target) && event.target.className !== 'btn-primary') {
+            panel.style.display = 'none';
+        }
+    });
+</script>
 {% endblock %}
