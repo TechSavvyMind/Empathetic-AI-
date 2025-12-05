@@ -5,6 +5,7 @@ import json
 import uuid
 import datetime
 import httpx
+import re
 from typing import Annotated, TypedDict, Union, List, Literal
 from dotenv import load_dotenv
 from langchain_google_genai import ChatGoogleGenerativeAI, GoogleGenerativeAIEmbeddings
@@ -35,7 +36,7 @@ tiktoken_cache_dir = "tiktoken_cache"
 os.environ["TIKTOKEN_CACHE_DIR"] = tiktoken_cache_dir
 assert os.path.exists(os.path.join(tiktoken_cache_dir, "9b5ad71b2ce5302211f9c61530b329a4922fc6a4"))
 
-DB_PATH = "./Database/NextGen.db"
+DB_PATH = "./Database/NextGen1.db"
 CHROMA_DB_DIR = "./sop_embeddings/chroma_store"
 COLLECTION_NAME = "telecom_sops"
 JSONL_PATH = "./sop_embeddings/telecom_sop_chunks.jsonl"
@@ -209,6 +210,8 @@ class AgentState(TypedDict):
     tool_output: str
     # New: Track if we need to escalate
     escalation_needed: bool
+    # NEW: Store the summarized context
+    long_term_memory: str
 
 
 # --- Pydantic Models ---
@@ -240,6 +243,58 @@ class TicketClassification(BaseModel):
 # 4. NODE IMPLEMENTATIONS
 # =============================================================================
 
+# --- NEW: MEMORY MANAGER NODE ---
+def memory_manager(state: AgentState):
+    """
+    1. Loads existing summary from DB.
+    2. Checks if conversation is too long (> 5 messages).
+    3. If long: Summarizes older messages -> Updates DB -> Updates State.
+    """
+    print("\n--- [Node] Memory Manager ---")
+    cust_id = state.get("customer_id")
+    messages = state["messages"]
+    
+    # 1. Fetch Existing Summary
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute("SELECT summary FROM conversation_memory WHERE customer_id = ?", (cust_id,))
+    row = cursor.fetchone()
+    existing_summary = row[0] if row else "No previous context."
+    conn.close()
+    
+    # 2. Check Length Logic (Threshold = 5 messages)
+    if len(messages) > 5:
+        print("   ⚠️ Long Context Detected. Summarizing...")
+        
+        # We summarize everything EXCEPT the last 2 messages (Keep recent context fresh)
+        to_summarize = messages[:-2]
+        recent_messages = messages[-2:]
+        
+        # LLM Summarization
+        summary_prompt = f"""
+        Summarize the following conversation concisely. Preserve key details like Customer Name, Issues Reported, and Solutions offered.
+        
+        Previous Summary: {existing_summary}
+        
+        New Messages:
+        {to_summarize}
+        """
+        new_summary = llm.invoke(summary_prompt).content
+        
+        # 3. Update DB
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        cursor.execute("INSERT OR REPLACE INTO conversation_memory (customer_id, summary, last_updated) VALUES (?, ?, ?)", 
+                       (cust_id, new_summary, datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
+        conn.commit()
+        conn.close()
+        
+        print(f"   ✅ Memory Updated: {new_summary[:50]}...")
+        return {"long_term_memory": new_summary}
+    
+    return {"long_term_memory": existing_summary}
+
+
 def sentiment_agent(state: AgentState):
     print("\n--- [Node] Sentiment Agent ---")
     user_text = state["messages"][-1].content
@@ -258,7 +313,7 @@ def router_node(state: AgentState):
 
     system_prompt = """Classify intent:
     1. 'greeting': Hello, Hi.
-    2. 'general_inquiry': General policies/how-to.
+    2. 'general_inquiry': General policies/how-to which no need DataBase.
     3. 'db_inquiry': My balance, bill, account status.
     4. 'troubleshoot': Slow internet, billing disputes.
     5. 'human_handoff': "Talk to human", "I want an agent", "Connect me to support".
@@ -313,6 +368,7 @@ def db_agent(state: AgentState):
 def sop_troubleshooter_node(state: AgentState):
     print("--- [Node] Hybrid Troubleshooter ---")
     user_text = state["messages"][-1].content
+    memory = state.get("long_term_memory", "")
     cust_id = state.get("customer_id")
 
     docs = sop_retriever.invoke(user_text)
@@ -324,30 +380,60 @@ def sop_troubleshooter_node(state: AgentState):
 
     structured_llm = llm.with_structured_output(HybridResponse)
     system_prompt = f"""You are a Technical Troubleshooter.
+    History: {memory}
     Context (SOP): {context}
     DB Schema: {db.get_table_info()}
+    Customer ID: {cust_id}
 
     1. If you can answer using SOP/DB, set can_resolve=True.
     2. If the query is unclear, irrelevant to Telecom, or SOP is missing, set can_resolve=False.
-    3. If SOP needs DB, set needs_sql=True and write query.
+    3. If SOP needs DB, set needs_sql=True and extract query.
     """
 
     chain = ChatPromptTemplate.from_messages([("system", system_prompt), ("human", "{query}")]) | structured_llm
     analysis = chain.invoke({"query": user_text})
 
-    # Check for Fallback
-    if not analysis.can_resolve:
-        print("   ⚠️ Agent cannot resolve query. Escalating.")
-        return {"tool_output": "Agent unable to resolve", "escalation_needed": True}
+    # # Check for Fallback
+    # if not analysis.can_resolve:
+    #     print("   ⚠️ Agent cannot resolve query. Escalating.")
+    #     return {"tool_output": "Agent unable to resolve", "escalation_needed": True}
 
-    final_context = f"SOP Guidelines: {context}\n"
-    if analysis.needs_sql:
+    # final_context = f"SOP Guidelines: {context}\n"
+    # if analysis.needs_sql:
+    #     try:
+    #         sql_result = db.run(analysis.sql_query)
+    #         final_context += f"\nLIVE DATA: {sql_result}"
+    #     except Exception as e:
+    #         final_context += f"\nDB Error: {e}"
+
+    # return {"tool_output": final_context}
+
+    # --- REGEX FALLBACK (Safety Net) ---
+    sql_query = analysis.sql_query
+    needs_execution = analysis.needs_sql
+    
+    # If LLM said "False" but text clearly has SQL, override it
+    if not needs_execution:
+        sql_match = re.search(r"SELECT .* FROM .* WHERE .*", context, re.IGNORECASE)
+        if sql_match:
+            print("   ⚠️ Regex detected SQL that LLM missed. Executing...")
+            sql_query = sql_match.group(0).replace(":customer_id", f"'{state['customer_id']}'").replace("?", f"'{state['customer_id']}'")
+            needs_execution = True
+
+    final_context = f"SOP Guidelines (Internal): {context}\n"
+    
+    if needs_execution and sql_query:
+        print(f"   ⚙️ Executing SQL: {sql_query}")
         try:
-            sql_result = db.run(analysis.sql_query)
-            final_context += f"\nLIVE DATA: {sql_result}"
+            sql_result = db.run(sql_query)
+            final_context += f"\nLIVE SYSTEM DATA: {sql_result}"
+            print(f"   ✅ Data: {sql_result}")
         except Exception as e:
-            final_context += f"\nDB Error: {e}"
-
+            print(f"   ❌ SQL Failed: {e}")
+            final_context += f"\nData Check Failed: {e}"
+    else:
+        print("   ℹ️ Pure Text Answer.")
+            
     return {"tool_output": final_context}
 
 
@@ -361,8 +447,12 @@ def ticket_agent(state: AgentState):
     
     cust_id = state.get("customer_id")
     description = state["messages"][-1].content
+    memory = state.get("long_term_memory", "No history")
     sentiment = state.get("sentiment", "Neutral")
     
+    # Combined description ensures Human Agent knows the full story
+    full_description = f"USER COMPLAINT: {description}\n\nCONTEXT_HISTORY: {memory}"
+
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     cursor = conn.cursor()
@@ -465,7 +555,7 @@ def ticket_agent(state: AgentState):
         cursor.execute('''
             INSERT INTO tickets (customer_id, issue_type_id, description, status, priority, created_at, assigned_agent_id)
             VALUES (?, ?, ?, ?, ?, ?, ?)
-        ''', (cust_id, selected_type_id, description, "Open", priority, created_at, assigned_agent_id))
+        ''', (cust_id, selected_type_id, full_description, "Open", priority, created_at, assigned_agent_id))
         
         ticket_id = cursor.lastrowid
         conn.commit()
@@ -523,7 +613,7 @@ def response_synthesizer(state: AgentState):
         # Standard Greeting / SOP / DB Answer
         context_instr = f"Answer the user's question using this specific data/context: {raw_data}"
 
-    full_prompt = f"{base_prompt}\n{tone}\n{context_instr}"
+    full_prompt = f"{base_prompt}\n{tone}\n{context_instr}\nNEVER output SQL queries to the user."
     
     msg = llm.invoke(f"{full_prompt}\n\nUser Query: {user_text}")
     return {"messages": [msg]}
@@ -534,6 +624,7 @@ def response_synthesizer(state: AgentState):
 
 workflow = StateGraph(AgentState)
 
+workflow.add_node("memory_manager", memory_manager) # Entry Point
 workflow.add_node("sentiment_scanner", sentiment_agent)
 workflow.add_node("router", router_node)
 workflow.add_node("greeting_agent", greeting_node)
@@ -543,7 +634,8 @@ workflow.add_node("hybrid_agent", sop_troubleshooter_node)
 workflow.add_node("ticket_agent", ticket_agent)  # NEW
 workflow.add_node("synthesizer", response_synthesizer)
 
-workflow.set_entry_point("sentiment_scanner")
+workflow.set_entry_point("memory_manager")
+workflow.add_edge("memory_manager", "sentiment_scanner")
 workflow.add_edge("sentiment_scanner", "router")
 
 
@@ -594,27 +686,73 @@ app = workflow.compile()
 # display(Image(app.get_graph().draw_mermaid_png()))
 
 # =============================================================================
-# 6. TEST SCENARIOS
+# 6. INTERACTIVE LOOP (Fixes Memory Issue)
 # =============================================================================
 
+def run_interactive_chat():
+    print(">>> 🤖 TELECOM BOT LIVE SESSION (Type 'exit' to quit)")
+    
+    # 1. State must be maintained here if not using a Checkpointer
+    chat_history = [] 
+    customer_id = "2"
+    
+    while True:
+        user_input = input("\nYou: ")
+        if user_input.lower() in ["exit", "quit"]: break
+        
+        # Append to local history
+        chat_history.append(HumanMessage(content=user_input))
+        
+        # Invoke Graph with accumulated history
+        inputs = {
+            "messages": chat_history, 
+            "customer_id": customer_id,
+        }
+        
+        try:
+            result = app.invoke(inputs)
+            bot_response = result["messages"][-1].content
+            
+            # Append Bot response to history so it grows
+            chat_history.append(AIMessage(content=bot_response))
+            
+            print(f"Bot: {bot_response}")
+            
+            print(f"Chat History Length: {len(chat_history)}")
+            # Debug: Check Memory
+            if len(chat_history) > 6:
+                chat_history = chat_history[-2:]
+                # print(f"   [Debug] Current Summary: {result.get('long_term_memory')}")
+
+        except Exception as e:
+            print(f"Error: {e}")
+
+
 if __name__ == "__main__":
-    print(">>> 🤖 TELECOM BOT: HUMAN HANDOFF ENABLED")
+    run_interactive_chat()
+    # print(">>> 🤖 TELECOM BOT: HUMAN HANDOFF ENABLED")
 
-    # TEST 1: Unknown Issue (Triggers Escalation)
-    print("\n--- TEST 1: Unknown Query (Expect Ticket) ---")
-    try:
-        # A query that has NO SOP coverage
-        res1 = app.invoke({"messages": [HumanMessage(content="My satellite dish on the roof is leaking water.")],
-                           "customer_id": "1"})
-        print(f"Bot: {res1['messages'][-1].content}")
-    except Exception as e:
-        print(f"Test 1 Error: {e}")
+    # while True:
+    #     user_input = input("Enter your query: ")
+    #     if user_input.lower() == 'exit':
+    #         break
+    #     # TEST 1: Unknown Issue (Triggers Escalation)
+    #     print("\n--- TEST 1: Unknown Query (Expect Ticket) ---")
+    #     try:
+    #         # A query that has NO SOP coverage
+    #         res1 = app.invoke({"messages": [HumanMessage(content=user_input)],
+    #                         "customer_id": "1"})
+            
+    #         print(f"Bot: {res1['messages'][-1].content}")
+    #         # print(f"STATE: {res1}")
+    #     except Exception as e:
+    #         print(f"Test 1 Error: {e}")
 
-    # TEST 2: Explicit Handoff
-    print("\n--- TEST 2: Explicit Human Request ---")
-    try:
-        res2 = app.invoke(
-            {"messages": [HumanMessage(content="I want to talk to a human agent now!")], "customer_id": "2"})
-        print(f"Bot: {res2['messages'][-1].content}")
-    except Exception as e:
-        print(f"Test 2 Error: {e}")
+    # # TEST 2: Explicit Handoff
+    # print("\n--- TEST 2: Explicit Human Request ---")
+    # try:
+    #     res2 = app.invoke(
+    #         {"messages": [HumanMessage(content="I want to talk to a human agent now!")], "customer_id": "2"})
+    #     print(f"Bot: {res2['messages'][-1].content}")
+    # except Exception as e:
+    #     print(f"Test 2 Error: {e}")
