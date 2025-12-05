@@ -78,6 +78,11 @@ class QueryDeepAnalysis(BaseModel):
         )
     )
 
+    # 8. PII Deduction
+    wants_pii: bool = Field(
+        description="True if the user is requesting personal sensitive information such as phone number, Password, address, email address, ID"
+        )
+
 
 # =============================================================================
 # 3. SENTIMENT MAPPER (Orchestrator → Fast LLM)
@@ -137,11 +142,16 @@ def brain_classifier_node(state: OrchestratorState):
         4. Need for multi-source reasoning (DB + SOP).
         5. Urgency.
         6. Whether it requires ReAct-style reasoning.
+        7. Whether the query requests personal identifiable information (PII).
+
+        PII Includes: Phone Number, Email, Address, Password
         
         OUTPUT RULES:
         - If user asks 'Why', 'Explain', 'Compare', or has a complex technical issue -> requires_react = True.
         - If user asks 'What is', 'How to', 'Status of' -> requires_react = False.
         - If Sentiment is 'Rage' or Urgency is 'Critical' -> use high intensity & urgency_level accordingly.
+        - Never attempt to retrieve or reveal PII.
+        - If user asks for phone number, email, ID, password -> wants_pii = True
     """
 
     structured_llm = llm_router.with_structured_output(QueryDeepAnalysis)
@@ -294,6 +304,8 @@ def router(state: OrchestratorState) -> str:
           * simple / known-path queries
     """
     analysis = state["analysis"]
+    if analysis.get("wants_pii"):
+        return "fast_agent"
 
     complexity = analysis["complexity_score"]
     requires_react = analysis["requires_react"]

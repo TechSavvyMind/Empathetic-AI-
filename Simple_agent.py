@@ -312,7 +312,16 @@ class TicketClassification(BaseModel):
 
 def router_node(state: AgentState):
     print("--- [Node] Router ---")
-    user_text = state["messages"][-1].content
+    user_text = state["messages"][-1].content.lower()
+    pii_keywords = ["mobile", "phone", "email", "address", "password", "id", "customer"]
+
+    if any(k in user_text for k in pii_keywords):
+        return {
+            "route_intent": "general_inquiry",
+            "tool_output": "PII_BLOCK_REQUESTED",
+            "escalation_needed": False
+        }
+
     structured_llm = llm.with_structured_output(RouteResponse)
 
     system_prompt = """Classify user query into one of:
@@ -343,6 +352,7 @@ def greeting_node(state: AgentState):
 def general_inquiry_node(state: AgentState):
     print("--- [Node] General Inquiry Agent ---")
     user_text = state["messages"][-1].content
+    cust_id = state.get("customer_id")
     docs = sop_retriever.invoke(user_text)
 
     if not docs:
@@ -355,7 +365,14 @@ def general_inquiry_node(state: AgentState):
 
 def db_agent(state: AgentState):
     print("--- [Node] Direct DB Agent ---")
-    user_text = state["messages"][-1].content
+    user_text = state["messages"][-1].content.lower()
+
+    if any(k in user_text for k in ["mobile", "phone", "email", "address", "password", "id", "customer"]):
+        return {
+            "tool_output": "PII_BLOCK_REQUESTED",
+            "escalation_needed": False
+        }
+    
     cust_id = state.get("customer_id")
 
     structured_llm = llm.with_structured_output(SqlQuery)
@@ -381,7 +398,14 @@ def db_agent(state: AgentState):
 
 def sop_troubleshooter_node(state: AgentState):
     print("--- [Node] Hybrid Troubleshooter ---")
-    user_text = state["messages"][-1].content
+    user_text = state["messages"][-1].content.lower()
+
+    if any(k in user_text for k in ["mobile", "phone", "email", "address", "password", "id", "customer"]):
+        return {
+            "tool_output": "PII_BLOCK_REQUESTED",
+            "escalation_needed": False
+        }
+    
     cust_id = state.get("customer_id")
     memory = state.get("long_term_memory", "")
 
@@ -598,6 +622,10 @@ def ticket_agent(state: AgentState):
 def response_synthesizer(state: AgentState):
     print("--- [Node] Empathetic Synthesizer ---")
     raw_data = state["tool_output"]
+    if raw_data == "PII_BLOCK_REQUESTED":
+        safe_msg = "For your security, I cannot share personal details"
+        return {"messages": [safe_msg]}
+    
     sentiment = state["sentiment"]
     user_text = state["messages"][-1].content
     
@@ -606,7 +634,7 @@ def response_synthesizer(state: AgentState):
                 "TICKET_CREATED" in raw_data or \
                 "TICKET_UPDATED" in raw_data
     
-    base_prompt = "You are a helpful Telecom Assistant."
+    base_prompt = "You are a helpful Telecom Assistant for NextGen Telecom Company"
     
     # 1. Tone Setting
     if sentiment in ["Angry", "Frustrated"]:

@@ -407,7 +407,7 @@ def response_synthesizer(state: ReactState):
         or "TICKET_UPDATED" in raw_data
     )
 
-    base_prompt = "You are a helpful Telecom Assistant."
+    base_prompt = "You are a helpful Telecom Assistant for NextGen Telecom Company."
 
     # Tone rule (same as NextGen_Chat)
     if sentiment in ["Angry", "Frustrated"]:
