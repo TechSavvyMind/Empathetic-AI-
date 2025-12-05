@@ -1,0 +1,41 @@
+CareConnect AI - pointers
+📌 Problem Statement: HUMANIZING DIGITAL CONVERSATIONS
+
+Current customer service chatbots lack empathy, struggle with unscripted or complex queries, and lose accuracy during long conversations, often resulting in hallucinations.
+Additionally, advanced reasoning models introduce latency, reducing the quality of real-time customer support.
+
+⚠️ Industrial Challenges
+1. Human-Like Interaction Gaps
+
+Inability to detect emotional cues or respond empathetically.
+
+Leads to reduced customer trust and dissatisfaction.
+
+2. Limited Handling of Complex Queries
+
+Effective only for SOP-based tasks; fail on non-scripted, real-world issues.
+
+Resulting in increased escalations and higher support costs.
+
+3. Model Constraints & Latency
+
+Context overflow in long conversations → hallucinated or irrelevant replies.
+
+High-latency reasoning models degrade real-time user experience.
+
+🎯 Scope & Dataset
+Domain: Telecom Industry
+
+Focus on enhancing customer support for mobile and broadband services, where timely, empathetic, and accurate assistance is critical.
+
+Dataset: Mobile & Broadband Customer Queries
+
+Chosen because:
+
+Telecom users frequently report emotion-driven issues (network outage, billing confusion, connectivity problems).
+
+High volume of unscripted and complex queries ideal for evaluating empathy, context handling, and reasoning.
+
+Enables realistic testing of hallucination reduction and latency improvements in long, multi-turn conversations.
+
+If you want, I can also prepare Problem Slide + Challenges Slide + Scope Slide in a 3-slide format, design a one-page summary, or create visual diagrams for your deck.
