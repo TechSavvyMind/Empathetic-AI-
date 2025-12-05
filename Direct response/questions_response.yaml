@@ -1,0 +1,66 @@
+1:
+  sql: |
+    SELECT 
+        t.ticket_id,
+        t.status,
+        it.name AS issue_name,
+        a.name AS agent_name
+    FROM tickets t
+    LEFT JOIN issue_types it
+        ON t.issue_type_id = it.issue_type_id
+    LEFT JOIN agents a
+        ON t.assigned_agent_id = a.agent_id
+    WHERE t.customer_id = 1
+    ORDER BY t.created_at DESC;
+  response_template: |
+    Ticket {ticket_id} is currently {status} for an 
+    Issue: {issue_name}.
+    It has assigned to {agent_name} he is working on it.
+
+8:
+  sql: |
+    SELECT 
+        o.outage_id,
+        o.issue_description,
+        o.start_time,
+        o.expected_resolution,
+        c.pincode
+    FROM customers c
+    LEFT JOIN outage_areas o
+        ON c.pincode = o.pincode
+    WHERE c.customer_id = 8
+    ORDER BY o.start_time DESC
+    LIMIT 1;
+  response_template: |
+    Your area is having outage "{issue_description}" 
+    services will be resolved soon.
+
+15:
+  sql: |
+    SELECT 
+        t.txn_id,
+        t.amount,
+        t.transaction_status
+    FROM transactions t
+    WHERE t.customer_id = 15
+    ORDER BY t.txn_date DESC
+    LIMIT 1;
+  response_template: |
+    You have made a transaction of  Rs.{amount} the status is in **{transaction_status}**. Please wait for some time.
+
+2:
+  sql: |
+    SELECT
+        invoice_id,
+        amount,
+        due_date,
+        paid_status,
+        billing_period
+    FROM invoices
+    WHERE customer_id = 2
+    ORDER BY due_date DESC
+    LIMIT 1;
+  
+  response_template: |
+    Your latest bill of Rs.{amount} is due.
+    Would you like help paying this bill?
