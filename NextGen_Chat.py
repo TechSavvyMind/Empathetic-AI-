@@ -4,6 +4,7 @@ import os
 import json
 import uuid
 import datetime
+import httpx
 from typing import Annotated, TypedDict, Union, List, Literal
 from dotenv import load_dotenv
 from langchain_google_genai import ChatGoogleGenerativeAI, GoogleGenerativeAIEmbeddings
@@ -22,11 +23,17 @@ load_dotenv()
 
 # !!! IMPORTANT: Set your OpenAI API Key here !!!
 # os.environ["OPENAI_API_KEY"] = "sk-..."
-GOOGLE_API_KEY = os.getenv('GOOGLE_API_KEY')
+OPENAI_API_KEY = os.getenv('OPENAI_API_KEY')
 
 # =============================================================================
 # 1. CONFIGURATION
 # =============================================================================
+
+client = httpx.Client(verify=False)
+
+tiktoken_cache_dir = "tiktoken_cache"
+os.environ["TIKTOKEN_CACHE_DIR"] = tiktoken_cache_dir
+assert os.path.exists(os.path.join(tiktoken_cache_dir, "9b5ad71b2ce5302211f9c61530b329a4922fc6a4"))
 
 DB_PATH = "./Database/NextGen.db"
 CHROMA_DB_DIR = "./sop_embeddings/chroma_store"
@@ -153,7 +160,12 @@ def load_documents_from_jsonl(file_path: str) -> List[Document]:
 
 
 def setup_vector_store():
-    embedding_function = GoogleGenerativeAIEmbeddings(model="models/gemini-embedding-001", api_key=GOOGLE_API_KEY)
+    embedding_function = OpenAIEmbeddings(
+        base_url="https://genailab.tcs.in",
+        model="azure/genailab-maas-text-embedding-3-large",
+        api_key=OPENAI_API_KEY, # Replace with your actual API key
+        http_client=client
+    )
     if os.path.exists(CHROMA_DB_DIR) and os.path.isdir(CHROMA_DB_DIR):
         print("✅ Found existing ChromaDB. Loading...")
         return Chroma(persist_directory=CHROMA_DB_DIR, collection_name=COLLECTION_NAME,
@@ -172,10 +184,12 @@ def setup_vector_store():
 # setup_database_schema()
 sop_retriever = setup_vector_store()
 db = SQLDatabase.from_uri(f"sqlite:///{DB_PATH}")
-llm = ChatGoogleGenerativeAI(
-    model="gemini-2.5-flash",
-    api_key=GOOGLE_API_KEY,
-    temperature=0.3
+
+llm = ChatOpenAI(
+    base_url="https://genailab.tcs.in",
+    model="genailab-maas-gpt-4o",
+    api_key=OPENAI_API_KEY,
+    http_client=client
 )
 
 # =============================================================================
@@ -217,6 +231,10 @@ class HybridResponse(BaseModel):
 class SqlQuery(BaseModel):
     query: str = Field(description="Valid SQL query.")
 
+
+class TicketClassification(BaseModel):
+    issue_type_id: int = Field(description="The ID of the most relevant issue type from the provided list.")
+    reasoning: str = Field(description="Why this issue type was selected.")
 
 # =============================================================================
 # 4. NODE IMPLEMENTATIONS
@@ -333,49 +351,134 @@ def sop_troubleshooter_node(state: AgentState):
     return {"tool_output": final_context}
 
 
-# --- NEW NODE: TICKET CREATION (ESCALATION) ---
+# --- UPDATED: INTELLIGENT TICKET AGENT ---
 def ticket_agent(state: AgentState):
-    """Creates a ticket in the DB when LLM fails."""
-    print("--- [Node] Ticket Creation Agent ---")
-
+    """
+    1. Checks for EXISTING Open tickets. If found, updates them.
+    2. If NO open ticket, uses LLM to classify and create a new one.
+    """
+    print("--- [Node] Intelligent Ticket Agent ---")
+    
     cust_id = state.get("customer_id")
     description = state["messages"][-1].content
     sentiment = state.get("sentiment", "Neutral")
-
-    # 1. Determine Priority based on Sentiment
-    priority = "High" if sentiment in ["Angry", "Frustrated"] else "Medium"
-
-    # 2. Determine Issue Type (Simple heuristic or LLM)
-    # Mapping: 1=Technical, 2=Billing, 3=General
-    issue_type_id = 3
-    if "bill" in description.lower() or "charge" in description.lower():
-        issue_type_id = 2
-    elif "internet" in description.lower() or "slow" in description.lower():
-        issue_type_id = 1
-
-    # 3. Insert into DB (Mimicking crud.py create_ticket)
-    created_at = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-
+    
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    cursor = conn.cursor()
+    
     try:
-        conn = sqlite3.connect(DB_PATH)
-        cursor = conn.cursor()
+        # --- LOGIC 1: CHECK FOR EXISTING OPEN TICKET ---
+        cursor.execute(
+            "SELECT ticket_id, description, assigned_agent_id FROM tickets WHERE customer_id = ? AND status = 'Open'", 
+            (cust_id,)
+        )
+        existing_ticket = cursor.fetchone()
+        
+        if existing_ticket:
+            # UPDATE EXISTING TICKET
+            t_id = existing_ticket['ticket_id']
+            old_desc = existing_ticket['description']
+            agent_id = existing_ticket['assigned_agent_id']
+            
+            # Fetch agent name for context
+            cursor.execute("SELECT name FROM agents WHERE agent_id = ?", (agent_id,))
+            agent_row = cursor.fetchone()
+            agent_name = agent_row['name'] if agent_row else "Unknown"
+            
+            timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
+            new_desc = f"{old_desc} || [Update {timestamp}]: {description}"
+            
+            cursor.execute("UPDATE tickets SET description = ? WHERE ticket_id = ?", (new_desc, t_id))
+            conn.commit()
+            
+            msg = f"TICKET_UPDATED: You already have an open ticket #{t_id} with {agent_name}. I have added this new information to it."
+            print(f"   🔄 {msg}")
+            return {"tool_output": msg}
 
+        # --- LOGIC 2: CREATE NEW TICKET (If no existing one) ---
+        
+        # 1. Fetch Issue Types
+        cursor.execute("SELECT issue_type_id, name, description FROM issue_types")
+        issue_types = [dict(row) for row in cursor.fetchall()]
+        
+        # Identify "General" as a fallback ID
+        general_type_id = next((it['issue_type_id'] for it in issue_types if "General" in it['name']), 1)
+
+        # 2. LLM Classification
+        selected_type_id = general_type_id # Default initialization
+        selected_type_name = "General Support"
+        
+        try:
+            structured_llm = llm.with_structured_output(TicketClassification)
+            classification_prompt = f"""
+            You are a Ticket Classifier. Match the user complaint to the best Issue Type.
+            
+            Available Issue Types:
+            {json.dumps(issue_types, indent=2)}
+            
+            User Complaint: "{description}"
+            
+            Return the exact issue_type_id.
+            """
+            classification = structured_llm.invoke(classification_prompt)
+            
+            # Validation Check
+            if classification and classification.issue_type_id:
+                selected_type_id = classification.issue_type_id
+                selected_type_name = next((it['name'] for it in issue_types if it['issue_type_id'] == selected_type_id), "General Support")
+            else:
+                print("   ⚠️ LLM returned None for ID. Using Fallback.")
+                
+        except Exception as llm_e:
+            print(f"   ⚠️ Classification Warning: {llm_e}. Using General Fallback.")
+            # Keep defaults set above
+
+        print(f"   Using Issue Type: {selected_type_name} (ID: {selected_type_id})")
+
+        # 3. Map Department
+        department_mapping = {
+            "Billing Dispute": "Billing", "Wrong Recharge": "Billing", "Plan Benefits Not Added": "Billing",
+            "Poor 4G/5G Signal": "Network", "Roaming Issue": "Network",
+            "Slow Internet": "Broadband", "Router Configuration Issue": "Broadband", "Broadband Outage": "Broadband",
+            "SIM Issue": "General Support", "Porting Issue": "General Support", "Data Exhausted Fast": "General Support"
+        }
+        target_department = department_mapping.get(selected_type_name, "General Support")
+
+        # 4. Find Best Agent
+        cursor.execute("SELECT agent_id, name FROM agents WHERE department = ? ORDER BY rating DESC LIMIT 1", (target_department,))
+        best_agent = cursor.fetchone()
+        
+        if best_agent:
+            assigned_agent_id = best_agent['agent_id']
+            agent_name = best_agent['name']
+        else:
+            cursor.execute("SELECT agent_id, name FROM agents ORDER BY rating DESC LIMIT 1")
+            fallback = cursor.fetchone()
+            assigned_agent_id = fallback['agent_id']
+            agent_name = fallback['name']
+
+        # 5. Insert Ticket
+        priority = "High" if sentiment in ["Angry", "Frustrated"] else "Medium"
+        created_at = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        
         cursor.execute('''
             INSERT INTO tickets (customer_id, issue_type_id, description, status, priority, created_at, assigned_agent_id)
             VALUES (?, ?, ?, ?, ?, ?, ?)
-        ''', (cust_id, issue_type_id, description, "Open", priority, created_at, 1))
-
+        ''', (cust_id, selected_type_id, description, "Open", priority, created_at, assigned_agent_id))
+        
         ticket_id = cursor.lastrowid
         conn.commit()
-        conn.close()
-
-        output_msg = f"TICKET_CREATED: ID #{ticket_id}. Priority: {priority}. Assigned to Agent 1."
-        print(f"   ✅ {output_msg}")
-        return {"tool_output": output_msg}
-
+        
+        msg = f"TICKET_CREATED: Ticket #{ticket_id} created for '{selected_type_name}'. Assigned to {agent_name} ({target_department})."
+        print(f"   ✅ {msg}")
+        return {"tool_output": msg}
+        
     except Exception as e:
-        print(f"   ❌ Ticket Creation Failed: {e}")
-        return {"tool_output": "Failed to create ticket system error."}
+        print(f"   ❌ Ticket Logic Failed: {e}")
+        return {"tool_output": "Failed to manage ticket due to system error."}
+    finally:
+        conn.close()
 
 
 def response_synthesizer(state: AgentState):
@@ -383,30 +486,47 @@ def response_synthesizer(state: AgentState):
     raw_data = state["tool_output"]
     sentiment = state["sentiment"]
     user_text = state["messages"][-1].content
-    escalated = state.get("escalation_needed", False) or "TICKET_CREATED" in raw_data
-
+    
+    # Check if this was an escalation (Ticket Created OR Updated)
+    escalated = state.get("escalation_needed", False) or \
+                "TICKET_CREATED" in raw_data or \
+                "TICKET_UPDATED" in raw_data
+    
     base_prompt = "You are a helpful Telecom Assistant."
-
+    
+    # 1. Tone Setting
     if sentiment in ["Angry", "Frustrated"]:
-        tone = "The user is upset. Start with a sincere apology. Be concise but reassuring. Acknowledge their frustration."
+        tone = "The user is upset. Start with a sincere apology and reassurance."
     elif sentiment == "Happy":
-        tone = "The user is happy. Respond with high energy and gratitude."
+        tone = "The user is happy. Respond with high energy."
     else:
-        tone = "The user is neutral. Be professional, polite, and direct."
+        tone = "The user is neutral. Be professional and polite."
 
+    # 2. Context Logic
     if escalated:
         if "TICKET_CREATED" in raw_data:
-            context_instr = f"Inform the user that because the issue is complex, you have created a support ticket. \nTicket Details: {raw_data}"
+            context_instr = f"""
+            ACTION TAKEN: A new support ticket was created because the issue requires human attention.
+            DETAILS: {raw_data}
+            INSTRUCTION: Inform the user clearly that a ticket has been created. Mention the Ticket ID and the Agent Name assigned. Assure them they are in good hands.
+            """
+        elif "TICKET_UPDATED" in raw_data:
+            context_instr = f"""
+            ACTION TAKEN: Found an existing open ticket for this customer and added their new comments to it.
+            DETAILS: {raw_data}
+            INSTRUCTION: Tell the user you noticed they already had an open case, so instead of creating a duplicate, you have updated their existing ticket with this new information. This is efficient and helpful.
+            """
         else:
-            # Fallback if ticket creation failed or wasn't triggered yet (shouldn't happen with correct edges)
-            context_instr = "Apologize that you cannot help and suggest calling support."
+            # Fallback if escalation happened but no ticket info (rare error case)
+            context_instr = "Apologize that you cannot resolve the issue directly and suggest they call our hotline."
     else:
-        context_instr = f"Answer using: {raw_data}"
+        # Standard Greeting / SOP / DB Answer
+        context_instr = f"Answer the user's question using this specific data/context: {raw_data}"
 
     full_prompt = f"{base_prompt}\n{tone}\n{context_instr}"
-    msg = llm.invoke(f"{full_prompt}\n\nQuery: {user_text}")
+    
+    msg = llm.invoke(f"{full_prompt}\n\nUser Query: {user_text}")
     return {"messages": [msg]}
-
 
 # =============================================================================
 # 5. GRAPH CONSTRUCTION
@@ -471,7 +591,7 @@ workflow.add_edge("synthesizer", END)
 app = workflow.compile()
 
 # Graph Structure
-display(Image(app.get_graph().draw_mermaid_png()))
+# display(Image(app.get_graph().draw_mermaid_png()))
 
 # =============================================================================
 # 6. TEST SCENARIOS
