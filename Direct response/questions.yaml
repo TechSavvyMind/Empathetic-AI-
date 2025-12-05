@@ -1,0 +1,55 @@
+check balance:
+  question: "check my balance"
+  sql: |
+    SELECT mobile_data_used_gb, mobile_voice_minutes, mobile_sms_count
+    FROM customer_usage
+    WHERE customer_id = ?
+    ORDER BY date DESC
+    LIMIT 1
+
+current plan:
+  question: "what is my plan"
+  sql: |
+    SELECT p.plan_name, p.data_limit, p.voice, p.sms, s.end_date
+    FROM subscriptions s
+    JOIN plans p ON s.plan_id = p.plan_id
+    WHERE s.customer_id = ?
+    ORDER BY s.start_date DESC
+    LIMIT 1
+
+plan expiry:
+  question: "when will my plan expire"
+  sql: |
+    SELECT end_date
+    FROM subscriptions
+    WHERE customer_id = ?
+    ORDER BY start_date DESC
+    LIMIT 1
+
+account status:
+  question: "what is my account status"
+  sql: |
+    SELECT account_status
+    FROM customers
+    WHERE customer_id = ?
+
+kyc status:
+  question: "what is my KYC status"
+  sql: |
+    SELECT kyc_status
+    FROM customers
+    WHERE customer_id = ?
+
+subscription expiry:
+  question: "When will my current plan expire"
+  sql: |
+    SELECT end_date FROM subscriptions 
+    WHERE customer_id = ? ORDER BY  start_date DESC
+    LIMIT 1
+
+subscription status:
+  question: "When will my current plan expire"
+  sql: |
+    SELECT status FROM subscriptions 
+    WHERE customer_id = ? ORDER BY  start_date DESC
+    LIMIT 1
