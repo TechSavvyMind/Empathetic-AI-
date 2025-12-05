@@ -33,4 +33,10 @@
         <p>Report an outage or start a technical chat.</p>
     </div>
 </section>
+<script>
+  window.isLoggedIn = {{ 'true' if session.user_id else 'false' }};
+  window.currentUser = "{{ session.username or '' }}";
+</script>
+
+<!-- <script src="{{ url_for('static', filename='script.js') }}"></script> -->
 {% endblock %}

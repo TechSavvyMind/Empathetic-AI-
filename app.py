@@ -3,10 +3,13 @@ import sqlite3
 import os
 from functools import wraps
 from werkzeug.security import generate_password_hash, check_password_hash
+from  Orchestrator import orchestrator_app
+from langchain_core.messages import HumanMessage, AIMessage, BaseMessage
 
 app = Flask(__name__)
-app.secret_key = 'secure_key_dev'  # Change this for production
-DB_NAME = "./Database/NextGen.db"
+app.secret_key = os.urandom(32) 
+app.config['SESSION_PERMANENT'] = False
+DB_NAME = "./Database/NextGen1.db"
 
 # --- Database Helper Functions ---
 def init_db():
@@ -70,8 +73,10 @@ def login():
         if user and check_password_hash(user['password'], password):
             session['user_id'] = user['id']
             session['username'] = user['username']
+            session['customer_id'] = user['customer_id']  # 🔴 ADD THIS
             flash(f'Welcome back, {user["username"]}!', 'success')
             return redirect(url_for('dashboard'))
+
         else:
             flash('Invalid username or password.', 'error')
             
@@ -107,8 +112,9 @@ def register():
 @app.route('/dashboard')
 @login_required
 def dashboard():
-    return render_template('dashboard.html', username=session['username'])
-
+    return render_template(
+        'dashboard.html', username=session['username'], 
+        customer_id=session.get("customer_id"))
 @app.route('/services')
 @login_required
 def services():
@@ -120,17 +126,45 @@ def logout():
     session.clear()
     return redirect(url_for('index'))
 
+
 # --- API for future Chatbot Logic ---
 @app.route('/api/chat', methods=['POST'])
 @login_required
 def chat_api():
     data = request.json
-    message = data.get('message')
-    # Placeholder for future complex logic (Sentiment Analysis, RAG, etc.)
-    # For now, simple echo or acknowledgment
-    return jsonify({
-        "response": f"I received: '{message}'. Our smart systems will process this soon!"
+    user_message = data.get("message")
+    if not user_message:
+        return jsonify({"error": "No message provided"}), 400
+
+    # Retrieve or initialize chat history from session (as dicts)
+    raw_history = session.get('chat_history', [])
+    chat_history = []
+    for msg in raw_history:
+        if msg["type"] == "human":
+            chat_history.append(HumanMessage(content=msg["content"]))
+        elif msg["type"] == "ai":
+            chat_history.append(AIMessage(content=msg["content"]))
+
+    chat_history.append(HumanMessage(content=user_message))
+
+    response = orchestrator_app.invoke({
+        "messages": chat_history,
+        "customer_id": session.get("customer_id")
     })
+    bot_response = response["final_response"]
+    print(f"Orchestrator: {response}")
+    chat_history.append(AIMessage(content=bot_response))
+
+    # Trim history if too long
+    if len(chat_history) > 6:
+        chat_history = chat_history[-2:]
+
+    # Store as serializable dicts
+    session['chat_history'] = [
+        {"type": "human", "content": m.content} if isinstance(m, HumanMessage) else {"type": "ai", "content": m.content}
+        for m in chat_history
+    ]
+    return jsonify({"response": bot_response})
 
 if __name__ == '__main__':
     # init_db()
