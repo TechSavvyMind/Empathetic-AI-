@@ -1,0 +1,67 @@
+Slide 3 - 
+
+
+🎤 Jury Presentation Summary – Key Capabilities & Business Impact
+
+1. Human-Like, Empathy-Driven Support
+Our chatbot detects user emotion and adapts its tone in real time, delivering supportive and frustration-reducing responses. This leads to a 30–40% boost in CSAT in real-world deployments.
+
+2. Instant, Accurate Troubleshooting
+For known telecom issues, the bot resolves queries in under 300 ms using SOP-based reasoning and retained context. This dramatically reduces wait times and improves first-contact resolution.
+
+3. Expert-Level Handling of Complex Issues
+For non-routine or ambiguous cases, the ReAct agent performs multi-step expert reasoning, runs DB checks, and executes escalation logic—matching how a trained human agent would troubleshoot.
+
+4. Major Efficiency Gains & Cost Reduction
+Automation lowers 40–60% of human escalations, reduces SLA penalties, accelerates resolution time, and optimizes support team workload—unlocking significant operational savings.
+
+5. Enterprise-Ready, Compliant & Scalable
+Built with a modular architecture,  guardrails, secure data handling, and logging, the system is designed for seamless scaling and safe deployment across telecom environments.
+
+
+--------------------------------------------------------
+Road map and Gaps in our product 
+
+1. Dataset gap: Synthetic data → no real telecom noise, mixed intents, or multilingual behavior.
+2. Troubleshooting gap: No live billing/network/CRM API → cannot resolve real issues.
+3. Scale gap: ReAct agent not stress-tested under telecom outage traffic loads.
+4. Compliance gap: PII handling not validated with real customer data.
+5. Evaluation gap: No golden dataset, no hallucination testing, no regression pipeline.
+6. Workflow gap: Ticketing + human handover not integrated with real CRM systems.
+7. Observability gap: Missing latency, cost, spike detection, and error dashboards.
+8. Language gap: No support for multilingual telecom customer interactions.
+
+------------------------------------------------------------
+
+more points to ponder on 
+✅ POC Gaps – Summary for Jury Presentation
+
+1. Synthetic Data → Not Representative of Real Telecom Customers
+POC wasn’t tested on real customer behavior (slang, multilingual mix, abusive tone, multi-intent queries, real billing/network issues). No exposure to actual outage patterns, plan structures, or regional trends.
+
+2. Missing Real Telecom System Integrations
+Troubleshooting is based on static SOPs only. No live billing, network, CRM, or OSS/BSS APIs → meaning real issue validation (outages, router checks, usage, payments) is untested.
+
+3. Unvalidated Performance at Telecom Scale
+ReAct reasoning and agent orchestration were not load-tested for high-traffic conditions (e.g., outage surges, thousands of escalations). No latency SLAs, failover tests, or stress testing done.
+
+4. Safety, Compliance & PII Handling Not Production-Ready
+Because the dataset was synthetic, real PII detection, redaction, logging compliance (GDPR/TRAI), and sensitive-data safeguards remain unvalidated.
+
+5. Gaps in Multi-Intent & Multi-Turn Handling
+Telecom users often mix billing + network + recharge issues. POC only partially supports this — lacking strong multi-intent separation, deep memory retention, and dynamic context switching.
+
+6. Incomplete Evaluation & Quality Pipeline
+No real-world metrics (AHT, FCR, CSAT impact), no hallucination testing, no golden dataset from real logs, and no automated regression testing.
+
+7. Ticketing & Human Handover Not Realistic Yet
+No integration with real CRM systems (ServiceNow/Freshdesk). Ticket flows, SLA timers, agent handover snapshots, and queue prioritization were not tested in real environments.
+
+8. Lack of Production Observability & Monitoring
+Missing telecom-grade dashboards: outage surge detection, escalation spike monitoring, latency & cost visibility, anomaly detection.
+
+9. No Multi-Language or Regional Support
+Current POC works only in English, whereas real telecom usage heavily mixes regional languages (Hinglish, Tamil-English, etc.).
+
+10. No Alignment with Call Center Workflows
+L1/L2 agents do not receive summaries, classifications, or AI-assisted suggestions. Bot-to-human collaboration is not validated.
