@@ -1,0 +1,71 @@
+Architecture diagram
+
+1️⃣ Architecture Overview – Orchestrated Dual Agent System
+
+(Presenter 1)
+
+Key Points to Say:
+
+“Our architecture solves the biggest challenge in support automation: combining speed, empathy, and deep reasoning in one system.”
+
+“We use an Orchestrator that performs deep intent + emotion analysis and decides which path to send the query to — Fast or ReAct.”
+
+“The Fast Agent handles known SOP flows instantly using ChromaDB + SQL, giving sub-300ms responses.”
+
+“The ReAct Agent handles complex telecom issues using multi-step reasoning and tool calls.”
+
+“An empathetic response layer rewrites outputs in the right tone.”
+
+“Finally, everything is logged for audit, safety, and continuous improvement.”
+
+Goal of this slide:
+Show how smart routing + dual agents create a human-like, accurate support experience.
+
+2️⃣ Fast Agent – SOP/DB Path
+
+(Presenter 2)
+
+Key Points to Say:
+
+“This agent handles predictable, repeated telecom issues like: plan checks, router resets, billing summaries, recharge info.”
+
+“It retrieves SOPs instantly using vector search + SQL lookups.”
+
+“This is our speed engine — responses are consistent, accurate, and extremely fast.”
+
+“It also triggers intelligent ticket creation for known error patterns.”
+
+Goal of this slide:
+Show this agent ensures speed, accuracy, and operational efficiency.
+
+3️⃣ ReAct Agent – Deep Reasoning Path
+
+(Presenter 3)
+
+Key Points to Say:
+
+“This agent handles unscripted or complex cases—like disputes, network escalations, multi-step troubleshooting.”
+
+“It uses a Thought → Action → Observation loop, similar to a human expert.”
+
+“It can call tools like database queries, outage checkers, or escalation logic.”
+
+“When needed, it escalates to human agents with a context summary.”
+
+Goal of this slide:
+Show this agent covers scenarios where SOP-only systems usually fail.
+
+4️⃣ Empathetic Response Synthesizer
+
+(Presenter 4)
+
+Key Points to Say:
+
+“Every response is rewritten with sentiment-aware tone—calming frustrated users, guiding confused users.”
+
+“It also explains actions clearly, like ticket creation or next steps.”
+
+“This layer ensures the bot doesn’t sound robotic.”
+
+Goal of this slide:
+Show how the bot builds trust with natural, human-like communication.
