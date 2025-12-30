@@ -25,6 +25,7 @@ load_dotenv()
 # !!! IMPORTANT: Set your OpenAI API Key here !!!
 # os.environ["OPENAI_API_KEY"] = "sk-..."
 OPENAI_API_KEY = os.getenv('OPENAI_API_KEY')
+GOOGLE_API_kEY = os.getenv('GOOGLE_API_KEY')
 
 # =============================================================================
 # 1. CONFIGURATION
@@ -161,12 +162,15 @@ def load_documents_from_jsonl(file_path: str) -> List[Document]:
 
 
 def setup_vector_store():
-    embedding_function = OpenAIEmbeddings(
-        base_url="https://genailab.tcs.in",
-        model="azure/genailab-maas-text-embedding-3-large",
-        api_key=OPENAI_API_KEY, # Replace with your actual API key
-        http_client=client
-    )
+    # embedding_function = OpenAIEmbeddings(
+    #     base_url="https://genailab.tcs.in",
+    #     model="azure/genailab-maas-text-embedding-3-large",
+    #     api_key=OPENAI_API_KEY, # Replace with your actual API key
+    #     http_client=client
+    # )
+
+    embedding_function = GoogleGenerativeAIEmbeddings(model="models/gemini-embedding-001", api_key=GOOGLE_API_KEY)
+
     if os.path.exists(CHROMA_DB_DIR) and os.path.isdir(CHROMA_DB_DIR):
         print("✅ Found existing ChromaDB. Loading...")
         return Chroma(persist_directory=CHROMA_DB_DIR, collection_name=COLLECTION_NAME,
@@ -186,11 +190,18 @@ def setup_vector_store():
 sop_retriever = setup_vector_store()
 db = SQLDatabase.from_uri(f"sqlite:///{DB_PATH}")
 
-llm = ChatOpenAI(
-    base_url="https://genailab.tcs.in",
-    model="genailab-maas-gpt-4o",
-    api_key=OPENAI_API_KEY,
-    http_client=client
+# llm = ChatOpenAI(
+#     base_url="https://genailab.tcs.in",
+#     model="genailab-maas-gpt-4o",
+#     api_key=OPENAI_API_KEY,
+#     http_client=client
+# )
+
+llm = ChatGoogleGenerativeAI(
+    model="gemini-2.5-flash",
+    api_key=GOOGLE_API_KEY,
+    client=client,
+    temperature=0.3
 )
 
 # =============================================================================
